@@ -1,0 +1,357 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="theme-color" content="#0F1713">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" href="icon-192.png">
+<link rel="apple-touch-icon" href="icon-192.png">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>Trazador de Ejes Corporales</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@600;700&family=Barlow:wght@400;500;600&family=JetBrains+Mono:wght@500&display=swap">
+<style>
+/* Layout: una columna — escenario de video arriba, panel de ajustes y acciones debajo (dos columnas en escritorio) */
+:root{
+  --bg:#EDF1EE; --surface:#FFFFFF; --line:#D3DBD5; --fg:#15201A; --muted:#5B6A60;
+  --accent:#1D58A8; --accent-fg:#FFFFFF; --stage:#0F1713;
+  --skel:#FFE600; --joint:#F01E1E; --ok:#1F8A4C; --warn:#B4541B;
+  --display:"Barlow Condensed","Arial Narrow",system-ui,sans-serif;
+  --body:"Barlow",system-ui,-apple-system,"Segoe UI",sans-serif;
+  --mono:"JetBrains Mono",ui-monospace,Consolas,monospace;
+}
+@media (prefers-color-scheme: dark){:root:not([data-theme="light"]){
+  --bg:#0C120F; --surface:#141D18; --line:#26332B; --fg:#E6ECE8; --muted:#94A39A;
+  --accent:#6FA3EC; --accent-fg:#08121F; --stage:#050907; --ok:#5CC98A; --warn:#E8955B; color-scheme:dark}}
+:root[data-theme="dark"]{
+  --bg:#0C120F; --surface:#141D18; --line:#26332B; --fg:#E6ECE8; --muted:#94A39A;
+  --accent:#6FA3EC; --accent-fg:#08121F; --stage:#050907; --ok:#5CC98A; --warn:#E8955B; color-scheme:dark}
+*{box-sizing:border-box}
+html,body{margin:0}
+[hidden]{display:none!important}
+body{background:var(--bg);color:var(--fg);font:16px/1.5 var(--body)}
+.wrap{max-width:1100px;margin:0 auto;padding-inline:16px;padding-block:20px 40px;display:grid;gap:18px}
+header{display:flex;flex-wrap:wrap;align-items:baseline;justify-content:space-between;gap:6px 16px}
+h1{font:700 clamp(28px,5vw,40px)/1 var(--display);letter-spacing:.01em;margin:0;text-transform:uppercase;text-wrap:balance}
+h1 span{color:var(--muted);font-weight:600}
+.sub{margin:0;color:var(--muted);max-width:60ch}
+.stage{background:var(--stage);border-radius:10px;overflow:hidden;position:relative;display:grid;place-items:center;min-height:240px}
+canvas#view{display:block;max-width:100%;max-height:70vh;width:auto;height:auto}
+.tag{position:absolute;left:12px;top:10px;font:500 12px var(--mono);color:#fff;background:rgba(0,0,0,.55);padding:3px 8px;border-radius:4px;letter-spacing:.04em}
+.transport{display:flex;align-items:center;gap:10px}
+.transport input[type=range]{flex:1;min-width:0}
+.time{font:500 13px var(--mono);font-variant-numeric:tabular-nums;color:var(--muted);white-space:nowrap}
+.grid{display:grid;grid-template-columns:1fr;gap:18px}
+@media (min-width:820px){.grid{grid-template-columns:1.15fr 1fr}}
+.panel{background:var(--surface);border:1px solid var(--line);border-radius:10px;padding:16px;display:grid;gap:14px;min-width:0;align-content:start}
+.panel h2{font:700 20px/1 var(--display);text-transform:uppercase;letter-spacing:.04em;margin:0}
+.steps{display:grid;gap:12px;margin:0;padding:0;list-style:none}
+.step{display:grid;grid-template-columns:30px 1fr;gap:10px;align-items:start}
+.num{width:30px;height:30px;border-radius:50%;border:2px solid var(--line);display:grid;place-items:center;font:700 16px var(--display);color:var(--muted)}
+.step.done .num{background:var(--ok);border-color:var(--ok);color:#fff}
+.step.active .num{border-color:var(--accent);color:var(--accent)}
+.step p{margin:2px 0 8px;color:var(--muted);font-size:14px}
+.step b{display:block;font-weight:600}
+button,.filebtn{font:600 15px var(--body);border-radius:8px;padding:10px 16px;border:1px solid var(--accent);background:var(--accent);color:var(--accent-fg);cursor:pointer;display:inline-flex;align-items:center;gap:8px}
+button.ghost{background:transparent;color:var(--accent)}
+button:disabled{opacity:.45;cursor:not-allowed}
+button:focus-visible,.filebtn:focus-within,input:focus-visible,select:focus-visible{outline:3px solid var(--skel);outline-offset:2px}
+.filebtn input{position:absolute;width:1px;height:1px;opacity:0;pointer-events:none}
+.filebtn{position:relative}
+.bar{height:8px;border-radius:4px;background:var(--line);overflow:hidden}
+.bar i{display:block;height:100%;width:0;background:var(--accent);transition:width .15s}
+.status{font-size:14px;color:var(--muted);min-height:1.5em;margin:0}
+.status.err{color:var(--warn)}
+.row{display:grid;grid-template-columns:120px 1fr auto;gap:10px;align-items:center}
+.row label{font-weight:500;font-size:14px}
+.row output{font:500 13px var(--mono);font-variant-numeric:tabular-nums;color:var(--muted);min-width:3ch;text-align:right}
+select{font:inherit;padding:6px 8px;border-radius:6px;border:1px solid var(--line);background:var(--surface);color:var(--fg)}
+.legend{display:flex;flex-wrap:wrap;gap:8px 18px;font-size:13px;color:var(--muted)}
+.legend span{display:inline-flex;align-items:center;gap:6px}
+.sw{display:inline-block;width:22px;height:5px;background:var(--skel);border-radius:1px}
+.sq{display:inline-block;width:9px;height:9px;background:var(--joint)}
+.dash{display:inline-block;width:22px;height:4px;background:repeating-linear-gradient(90deg,var(--joint) 0 6px,transparent 6px 10px)}
+.fine{font-size:13px;color:var(--muted);margin:0}
+@media (max-width:420px){.row{grid-template-columns:96px 1fr auto}}
+@media (prefers-reduced-motion:reduce){.bar i{transition:none}}
+</style>
+</head>
+<body>
+
+
+<div class="wrap">
+  <header>
+    <h1>Ejes corporales <span>· análisis de golpe</span></h1>
+    <p class="sub">Subí un video de un jugador y te devuelve el mismo video con el esqueleto amarillo, las articulaciones en rojo y el eje del tronco punteado.</p>
+  </header>
+
+  <div class="stage">
+    <canvas id="view" width="720" height="960" aria-label="Vista del video con el esqueleto superpuesto"></canvas>
+    <div class="tag" id="tag">EJEMPLO</div>
+  </div>
+  <div class="transport">
+    <button class="ghost" id="play" disabled aria-label="Reproducir">▶</button>
+    <input type="range" id="seek" min="0" max="1000" value="0" disabled aria-label="Posición del video">
+    <span class="time" id="time">0:00.0 / 0:00.0</span>
+  </div>
+
+  <div class="grid">
+    <section class="panel">
+      <h2>Pasos</h2>
+      <ol class="steps">
+        <li class="step active" id="s1"><span class="num">1</span><div>
+          <b>Cargá el video</b><p>MP4 o MOV desde la galería. Mejor si el jugador se ve de cuerpo entero.</p>
+          <label class="filebtn">Elegir video<input type="file" id="file" accept="video/*"></label>
+        </div></li>
+        <li class="step" id="s2"><span class="num">2</span><div>
+          <b>Detectar la postura</b><p>Recorre el video cuadro por cuadro. Tarda un poco más que la duración del video.</p>
+          <button id="analyze" disabled>Detectar postura</button>
+        </div></li>
+        <li class="step" id="s3"><span class="num">3</span><div>
+          <b>Exportar el video</b><p>Se reproduce una vez en tiempo real mientras se graba, con el audio original.</p>
+          <button id="export" disabled>Exportar video</button>
+        </div></li>
+      </ol>
+      <div class="bar" aria-hidden="true"><i id="prog"></i></div>
+      <p class="status" id="status" role="status">Cargando el detector de postura …</p>
+    </section>
+
+    <section class="panel">
+      <h2>Estilo</h2>
+      <div class="legend"><span><i class="sw"></i>Segmentos</span><span><i class="sq"></i>Articulaciones</span><span><i class="dash"></i>Eje del tronco</span></div>
+      <div class="row"><label for="thick">Grosor</label><input type="range" id="thick" min="0.5" max="2" step="0.1" value="1"><output id="thickO">1.0×</output></div>
+      <div class="row"><label for="smooth">Suavizado</label><input type="range" id="smooth" min="0" max="6" step="1" value="2"><output id="smoothO">2</output></div>
+      <div class="row"><label for="spine">Eje del tronco</label><select id="spine"><option value="1" selected>Visible</option><option value="0">Oculto</option></select><span></span></div>
+      <div class="row"><label for="model">Precisión</label><select id="model"><option value="1" selected>Alta</option><option value="0">Rápida</option></select><span></span></div>
+      <div class="row"><label for="fps">Cuadros/seg</label><select id="fps"><option value="30" selected>30</option><option value="24">24</option><option value="15">15</option></select><span></span></div>
+      <p class="fine">Detecta a una sola persona: si hay varias en cuadro, recortá el video al jugador antes de subirlo. Si el trazo tiembla, subí el suavizado; si llega tarde a los movimientos rápidos, bajalo.</p>
+    </section>
+  </div>
+</div>
+
+<script src="pose.js"></script>
+<script>
+(() => {
+const $ = id => document.getElementById(id);
+const canvas = $('view'), ctx = canvas.getContext('2d');
+const video = document.createElement('video');
+video.playsInline = true; video.preload = 'auto'; video.crossOrigin = 'anonymous';
+
+const SEGS = [[11,12],[11,13],[13,15],[12,14],[14,16],[23,24],[23,25],[25,27],[24,26],[26,28]];
+const JOINTS = [11,12,13,14,15,16,23,24,25,26,27,28];
+const S = { pose:null, ready:false, loaded:false, frames:null, smoothed:null, fps:30, busy:false, recording:false, audioCtx:null, audioDest:null };
+
+// Pose de ejemplo (coordenadas normalizadas) para la vista inicial
+const SAMPLE = (() => { const a = []; const set=(i,x,y)=>a[i]={x,y,visibility:1};
+  set(11,.36,.43); set(12,.60,.40); set(13,.26,.40); set(14,.70,.49); set(15,.16,.30); set(16,.76,.56);
+  set(23,.43,.63); set(24,.58,.62); set(25,.37,.76); set(26,.62,.75); set(27,.30,.90); set(28,.68,.90); return a; })();
+
+const css = n => getComputedStyle(document.documentElement).getPropertyValue(n).trim();
+const fmt = t => { t = Math.max(0,t||0); const m = Math.floor(t/60), s = t - m*60; return m+':'+(s<10?'0':'')+s.toFixed(1); };
+const setStatus = (msg, err) => { $('status').textContent = msg; $('status').classList.toggle('err', !!err); };
+const setProg = p => { $('prog').style.width = (Math.max(0,Math.min(1,p))*100)+'%'; };
+const stepState = (n) => { [1,2,3].forEach(i => { const el=$('s'+i); el.classList.toggle('done', i<n); el.classList.toggle('active', i===n); }); };
+
+function drawSkeleton(lm, W, H) {
+  if (!lm) return;
+  const k = parseFloat($('thick').value) * Math.min(W,H) / 720;
+  const lw = 5*k, js = 9*k;
+  const P = i => lm[i] && (lm[i].visibility ?? 1) > 0.15 ? [lm[i].x*W, lm[i].y*H] : null;
+  ctx.save();
+  ctx.lineCap = 'round'; ctx.lineJoin = 'round';
+  ctx.strokeStyle = '#FFE600'; ctx.lineWidth = lw;
+  for (const [a,b] of SEGS) { const p=P(a), q=P(b); if (!p||!q) continue;
+    ctx.beginPath(); ctx.moveTo(p[0],p[1]); ctx.lineTo(q[0],q[1]); ctx.stroke(); }
+  if ($('spine').value === '1') {
+    const a=P(11), b=P(12), c=P(23), d=P(24);
+    if (a&&b&&c&&d) { ctx.setLineDash([13*k, 9*k]); ctx.lineCap='butt'; ctx.strokeStyle='#F01E1E'; ctx.lineWidth=lw*1.05;
+      ctx.beginPath(); ctx.moveTo((a[0]+b[0])/2,(a[1]+b[1])/2); ctx.lineTo((c[0]+d[0])/2,(c[1]+d[1])/2); ctx.stroke(); ctx.setLineDash([]); }
+  }
+  ctx.fillStyle = '#F01E1E';
+  for (const i of JOINTS) { const p=P(i); if (p) ctx.fillRect(p[0]-js/2, p[1]-js/2, js, js); }
+  ctx.restore();
+}
+
+function drawSample() {
+  canvas.width = 720; canvas.height = 960;
+  const g = ctx.createLinearGradient(0,0,0,960); g.addColorStop(0,'#1c2a22'); g.addColorStop(.62,'#1c2a22'); g.addColorStop(.62,'#2E6B45'); g.addColorStop(1,'#245737');
+  ctx.fillStyle = g; ctx.fillRect(0,0,720,960);
+  ctx.strokeStyle='rgba(255,255,255,.18)'; ctx.lineWidth=2;
+  for (let x=40;x<720;x+=60){ctx.beginPath();ctx.moveTo(x,0);ctx.lineTo(x,590);ctx.stroke();}
+  ctx.strokeStyle='rgba(255,255,255,.7)'; ctx.lineWidth=5; ctx.beginPath(); ctx.moveTo(470,960); ctx.lineTo(560,595); ctx.stroke();
+  drawSkeleton(SAMPLE, 720, 960);
+}
+
+// ---- interpolación y suavizado ----
+function smoothFrames() {
+  const F = S.frames; if (!F) return;
+  const w = parseInt($('smooth').value,10); const out = new Array(F.length);
+  for (let f=0; f<F.length; f++) {
+    if (!F[f]) { out[f]=null; continue; }
+    const lm = [];
+    for (const j of JOINTS) {
+      let sx=0, sy=0, sv=0, n=0;
+      for (let d=-w; d<=w; d++) { const g=F[f+d]; if (!g||!g[j]) continue; const wt = w+1-Math.abs(d); sx+=g[j].x*wt; sy+=g[j].y*wt; sv+=(g[j].visibility??1)*wt; n+=wt; }
+      lm[j] = {x:sx/n, y:sy/n, visibility:sv/n};
+    }
+    out[f]=lm;
+  }
+  S.smoothed = out;
+}
+function landmarksAt(t) {
+  const F = S.smoothed; if (!F) return null;
+  const x = t*S.fps, i = Math.floor(x), u = x-i;
+  const a = F[Math.min(i,F.length-1)], b = F[Math.min(i+1,F.length-1)];
+  if (!a) return b || null; if (!b || u===0) return a;
+  const lm=[]; for (const j of JOINTS) lm[j] = {x:a[j].x+(b[j].x-a[j].x)*u, y:a[j].y+(b[j].y-a[j].y)*u, visibility:Math.min(a[j].visibility,b[j].visibility)};
+  return lm;
+}
+
+// ---- render ----
+function render() {
+  if (!S.loaded) { drawSample(); return; }
+  const W = canvas.width, H = canvas.height;
+  ctx.drawImage(video, 0, 0, W, H);
+  if (S.smoothed) drawSkeleton(landmarksAt(video.currentTime), W, H);
+  $('time').textContent = fmt(video.currentTime)+' / '+fmt(video.duration);
+  if (!S.busy && video.duration) $('seek').value = Math.round(video.currentTime/video.duration*1000);
+}
+function loop() {
+  render();
+  if (!video.paused && !video.ended) {
+    if (video.requestVideoFrameCallback) video.requestVideoFrameCallback(loop); else requestAnimationFrame(loop);
+  }
+}
+video.addEventListener('play', () => { $('play').textContent='❚❚'; $('play').setAttribute('aria-label','Pausar'); loop(); });
+video.addEventListener('pause', () => { $('play').textContent='▶'; $('play').setAttribute('aria-label','Reproducir'); render(); });
+video.addEventListener('seeked', () => { if (!S.busy) render(); });
+
+// ---- detector ----
+async function initPose() {
+  if (typeof Pose === 'undefined') { setStatus('No se pudo cargar el detector de postura. Recargá la página.', true); return; }
+  try {
+    S.pose = new Pose({ locateFile: f => f });
+    S.pose.setOptions({ modelComplexity: parseInt($('model').value,10), smoothLandmarks: true, enableSegmentation: false, minDetectionConfidence: 0.5, minTrackingConfidence: 0.5 });
+    S.pose.onResults(r => { S._last = r.poseLandmarks || null; });
+    await S.pose.initialize();
+    S.ready = true;
+    setStatus(S.loaded ? 'Listo. Tocá “Detectar postura”.' : 'Detector listo. Elegí un video para empezar.');
+    $('analyze').disabled = !S.loaded;
+  } catch (e) { console.error(e); setStatus('El detector de postura no pudo iniciarse en este navegador. Probá con Chrome actualizado.', true); }
+}
+$('model').addEventListener('change', async () => {
+  if (!S.pose) return; S.ready=false; $('analyze').disabled=true; setStatus('Cambiando precisión…');
+  try { await S.pose.close(); } catch(e){}
+  await initPose();
+});
+
+// ---- carga de video ----
+$('file').addEventListener('change', e => {
+  const f = e.target.files && e.target.files[0]; if (!f) return;
+  if (video.src) URL.revokeObjectURL(video.src);
+  S.frames = S.smoothed = null; S.loaded=false; S.name = f.name.replace(/\.[^.]+$/,'');
+  video.src = URL.createObjectURL(f);
+  setStatus('Abriendo video…'); setProg(0);
+});
+video.addEventListener('loadeddata', () => {
+  S.loaded = true;
+  canvas.width = video.videoWidth; canvas.height = video.videoHeight;
+  $('tag').textContent = 'ORIGINAL'; $('play').disabled=false; $('seek').disabled=false;
+  $('export').disabled = true; stepState(2);
+  $('analyze').disabled = !S.ready;
+  setStatus(S.ready ? 'Video cargado ('+fmt(video.duration)+'). Tocá “Detectar postura”.' : 'Video cargado. Esperando al detector…');
+  video.currentTime = 0; render();
+});
+video.addEventListener('error', () => setStatus('Este formato de video no se puede abrir en el navegador. Probá con un MP4.', true));
+
+$('play').addEventListener('click', () => { if (S.busy) return; video.paused ? video.play() : video.pause(); });
+$('seek').addEventListener('input', e => { if (S.busy||!video.duration) return; video.pause(); video.currentTime = e.target.value/1000*video.duration; });
+['thick','smooth','spine'].forEach(id => $(id).addEventListener('input', () => {
+  $('thickO').textContent = parseFloat($('thick').value).toFixed(1)+'×'; $('smoothO').textContent = $('smooth').value;
+  if (id==='smooth') smoothFrames();
+  if (!S.recording) render();
+}));
+
+const seekTo = t => new Promise(res => { const h=()=>{video.removeEventListener('seeked',h);res();}; video.addEventListener('seeked',h); video.currentTime=t; });
+
+// ---- paso 2: análisis cuadro por cuadro ----
+$('analyze').addEventListener('click', async () => {
+  if (!S.ready || !S.loaded || S.busy) return;
+  S.busy = true; video.pause();
+  ['analyze','export','play','seek','file','model','fps'].forEach(id => $(id).disabled = true);
+  S.fps = parseInt($('fps').value,10);
+  const n = Math.max(1, Math.floor(video.duration * S.fps));
+  const frames = new Array(n).fill(null);
+  try { S.pose.reset && S.pose.reset(); } catch(e){}
+  const t0 = performance.now(); let found = 0;
+  try {
+    for (let f=0; f<n; f++) {
+      await seekTo(Math.min(video.duration-0.001, f/S.fps + 0.0005));
+      S._last = null;
+      await S.pose.send({ image: video }, f/S.fps*1000);
+      if (S._last) { frames[f] = S._last.map(p => ({x:p.x, y:p.y, visibility:p.visibility})); found++; }
+      ctx.drawImage(video,0,0,canvas.width,canvas.height); if (frames[f]) drawSkeleton(frames[f], canvas.width, canvas.height);
+      setProg((f+1)/n);
+      const el = (performance.now()-t0)/1000, rest = el/(f+1)*(n-f-1);
+      if (f%3===0) setStatus('Detectando… cuadro '+(f+1)+' de '+n+' · faltan ~'+Math.ceil(rest)+' s');
+    }
+    S.frames = frames; smoothFrames();
+    const pct = Math.round(found/n*100);
+    if (found === 0) { setStatus('No se detectó ningún jugador. Probá con un video donde se vea el cuerpo entero.', true); stepState(2); }
+    else { setStatus('Listo: jugador detectado en el '+pct+'% de los cuadros. Revisalo con ▶ y exportá.'); stepState(3); $('export').disabled=false; $('tag').textContent='CON EJES'; }
+  } catch (e) { console.error(e); setStatus('Se cortó la detección. Probá de nuevo o elegí precisión “Rápida”.', true); }
+  S.busy = false;
+  ['analyze','play','seek','file','model','fps'].forEach(id => $(id).disabled = false);
+  await seekTo(0); render();
+});
+
+// ---- paso 3: exportar ----
+function pickMime() {
+  const c = ['video/mp4;codecs=avc1.42E01E,mp4a.40.2','video/mp4;codecs=avc1','video/mp4','video/webm;codecs=vp9,opus','video/webm;codecs=vp8,opus','video/webm'];
+  for (const m of c) if (window.MediaRecorder && MediaRecorder.isTypeSupported(m)) return m;
+  return '';
+}
+$('export').addEventListener('click', async () => {
+  if (!S.smoothed || S.busy) return;
+  if (!window.MediaRecorder || !canvas.captureStream) { setStatus('Este navegador no permite grabar video. Usá Chrome en la PC o en Android.', true); return; }
+  S.busy = S.recording = true; video.pause();
+  ['analyze','export','play','seek','file'].forEach(id => $(id).disabled = true);
+  const mime = pickMime(); const ext = mime.startsWith('video/mp4') ? 'mp4' : 'webm';
+  const stream = canvas.captureStream(S.fps);
+  try {
+    if (!S.audioCtx) { S.audioCtx = new (window.AudioContext||window.webkitAudioContext)(); const src = S.audioCtx.createMediaElementSource(video); S.audioDest = S.audioCtx.createMediaStreamDestination(); src.connect(S.audioDest); src.connect(S.audioCtx.destination); }
+    await S.audioCtx.resume();
+    S.audioDest.stream.getAudioTracks().forEach(t => stream.addTrack(t));
+  } catch (e) { console.warn('sin audio', e); }
+  const chunks = [];
+  const rec = new MediaRecorder(stream, { mimeType: mime || undefined, videoBitsPerSecond: 10_000_000 });
+  rec.ondataavailable = e => { if (e.data && e.data.size) chunks.push(e.data); };
+  const done = new Promise(r => rec.onstop = r);
+  await seekTo(0); render();
+  rec.start(250);
+  const tick = () => { setProg(video.currentTime/video.duration); if (!video.ended && S.recording) requestAnimationFrame(tick); };
+  setStatus('Grabando… dejá esta pestaña abierta y visible hasta que termine.');
+  await video.play(); tick();
+  await new Promise(r => video.addEventListener('ended', r, {once:true}));
+  render(); rec.stop(); await done;
+  stream.getVideoTracks().forEach(t => t.stop());
+  S.busy = S.recording = false; setProg(1);
+  ['analyze','export','play','seek','file'].forEach(id => $(id).disabled = false);
+  const blob = new Blob(chunks, { type: mime || 'video/webm' });
+  const filename = (S.name || 'video') + '_ejes.' + ext;
+  
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob); a.download = filename;
+  document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(() => URL.revokeObjectURL(a.href), 60000);
+  setStatus('Descargado como '+filename+'.');
+});
+
+drawSample();
+initPose();
+if ('serviceWorker' in navigator) navigator.serviceWorker.register('sw.js').catch(()=>{});
+})();
+</script>
+
+</body>
+</html>
