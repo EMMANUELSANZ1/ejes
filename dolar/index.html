@@ -1,0 +1,146 @@
+<!DOCTYPE html>
+<html lang="es-AR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="theme-color" content="#0f172a">
+<link rel="manifest" href="manifest.webmanifest">
+<title>Dólar → Pesos</title>
+<style>
+  :root{--bg:#0f172a;--card:#1e293b;--muted:#94a3b8;--txt:#f1f5f9;--acc:#22c55e;--bd:#334155}
+  *{box-sizing:border-box}
+  body{margin:0;font-family:system-ui,-apple-system,Segoe UI,Roboto,sans-serif;background:var(--bg);color:var(--txt);padding:16px;max-width:520px;margin-inline:auto}
+  h1{font-size:1.2rem;margin:4px 0 14px}
+  .inp{background:var(--card);border:1px solid var(--bd);border-radius:16px;padding:14px 16px;display:flex;align-items:center;gap:10px}
+  .inp span{font-size:1.4rem;color:var(--muted);font-weight:600}
+  .inp input{flex:1;background:none;border:none;outline:none;color:var(--txt);font-size:2rem;font-weight:700;width:100%}
+  .row{display:flex;gap:8px;margin:12px 0}
+  .seg{flex:1;display:flex;background:var(--card);border:1px solid var(--bd);border-radius:12px;overflow:hidden}
+  .seg button{flex:1;background:none;border:none;color:var(--muted);padding:10px;font-size:.95rem;font-weight:600}
+  .seg button.on{background:var(--acc);color:#052e16}
+  .refresh{background:var(--card);border:1px solid var(--bd);color:var(--txt);border-radius:12px;padding:0 14px;font-size:1.1rem}
+  .list{display:flex;flex-direction:column;gap:8px}
+  .item{background:var(--card);border:1px solid var(--bd);border-radius:14px;padding:12px 14px;display:flex;justify-content:space-between;align-items:center;cursor:pointer}
+  .item.fav{border-color:var(--acc);box-shadow:0 0 0 1px var(--acc) inset}
+  .item .n{font-weight:600}
+  .item .c{font-size:.8rem;color:var(--muted);margin-top:2px}
+  .item .r{font-size:1.25rem;font-weight:700;text-align:right}
+  .item.fav .r{color:var(--acc)}
+  .status{font-size:.8rem;color:var(--muted);margin:12px 2px;text-align:center}
+  .err{color:#f87171}
+  .copy{font-size:.75rem;color:var(--muted)}
+</style>
+</head>
+<body>
+<h1>💵 Dólar → Pesos (cotización del día)</h1>
+
+<div class="inp">
+  <span>US$</span>
+  <input id="usd" type="text" inputmode="decimal" placeholder="0" autocomplete="off">
+</div>
+
+<div class="row">
+  <div class="seg">
+    <button data-m="venta" class="on">Venta</button>
+    <button data-m="compra">Compra</button>
+  </div>
+  <button class="refresh" id="ref" title="Actualizar">⟳</button>
+</div>
+
+<div class="list" id="list"></div>
+<div class="status" id="st">Cargando cotizaciones…</div>
+
+<script>
+const NOMBRES={oficial:"Oficial",blue:"Blue",bolsa:"MEP",contadoconliqui:"CCL",tarjeta:"Tarjeta",mayorista:"Mayorista",cripto:"Cripto",manual:"Manual"};
+const ORDEN=["oficial","tarjeta","blue","bolsa","contadoconliqui","cripto","mayorista"];
+let rates=[], modo="venta", fav="oficial", updated=null;
+
+const $=id=>document.getElementById(id);
+const store={get(k){try{return JSON.parse(localStorage.getItem(k))}catch(e){return null}},set(k,v){try{localStorage.setItem(k,JSON.stringify(v))}catch(e){}}};
+fav=store.get("fav")||"oficial"; modo=store.get("modo")||"venta";
+
+const ars=n=>"$ "+n.toLocaleString("es-AR",{minimumFractionDigits:2,maximumFractionDigits:2});
+function parseUSD(s){
+  s=(s||"").trim().replace(/\s/g,"");
+  if(!s) return 0;
+  // Acepta 1.234,56 / 1234,56 / 1234.56
+  if(s.includes(",")) s=s.replace(/\./g,"").replace(",",".");
+  else if((s.match(/\./g)||[]).length>1) s=s.replace(/\./g,"");
+  const n=parseFloat(s); return isNaN(n)?0:n;
+}
+
+async function fromDolarApi(){
+  const r=await fetch("https://dolarapi.com/v1/dolares",{cache:"no-store"});
+  if(!r.ok) throw 0;
+  const d=await r.json();
+  return d.map(x=>({casa:x.casa,compra:x.compra,venta:x.venta,fecha:x.fechaActualizacion}));
+}
+async function fromBluelytics(){
+  const r=await fetch("https://api.bluelytics.com.ar/v2/latest",{cache:"no-store"});
+  if(!r.ok) throw 0;
+  const d=await r.json();
+  return [
+    {casa:"oficial",compra:d.oficial.value_buy,venta:d.oficial.value_sell,fecha:d.last_update},
+    {casa:"blue",compra:d.blue.value_buy,venta:d.blue.value_sell,fecha:d.last_update}
+  ];
+}
+
+async function load(){
+  $("st").textContent="Actualizando…"; $("st").className="status";
+  try{
+    let r; try{ r=await fromDolarApi(); }catch(e){ r=await fromBluelytics(); }
+    rates=r.filter(x=>x.venta||x.compra);
+    updated=rates.map(x=>x.fecha).filter(Boolean).sort().pop()||new Date().toISOString();
+    store.set("cache",{rates,updated});
+    render(); setStatus(false);
+  }catch(e){
+    const c=store.get("cache");
+    if(c){rates=c.rates;updated=c.updated;render();setStatus(true);}
+    else{
+      $("st").className="status";
+      $("st").innerHTML='<span class="err">No se pudo obtener la cotización automática.</span><br>Ingresala a mano: 1 US$ = $ <input id="man" inputmode="decimal" style="width:90px;font-size:1rem;padding:4px;border-radius:8px;border:1px solid #334155;background:#1e293b;color:#f1f5f9">';
+      $("man").oninput=()=>{const v=parseUSD($("man").value);rates=v?[{casa:"manual",compra:v,venta:v}]:[];fav="manual";render();};
+    }
+  }
+}
+function setStatus(offline){
+  const f=new Date(updated);
+  $("st").innerHTML=(offline?'<span class="err">Sin conexión — mostrando última cotización guardada.</span><br>':"")+
+    "Actualizado: "+f.toLocaleString("es-AR",{dateStyle:"short",timeStyle:"short"})+" · Fuente: DolarApi<br><span class='copy'>Tocá una fila para marcarla como favorita · mantené apretado para copiar</span>";
+}
+
+function render(){
+  const usd=parseUSD($("usd").value);
+  const sorted=[...rates].sort((a,b)=>{
+    if(a.casa===fav) return -1; if(b.casa===fav) return 1;
+    return (ORDEN.indexOf(a.casa)+99)%199-(ORDEN.indexOf(b.casa)+99)%199;
+  });
+  $("list").innerHTML=sorted.map(x=>{
+    const tc=x[modo]??x.venta;
+    if(!tc) return "";
+    return `<div class="item ${x.casa===fav?"fav":""}" data-c="${x.casa}">
+      <div><div class="n">${x.casa===fav?"★ ":""}${NOMBRES[x.casa]||x.casa}</div><div class="c">1 US$ = ${ars(tc)}</div></div>
+      <div class="r">${ars(usd*tc)}</div></div>`;
+  }).join("");
+}
+
+$("usd").addEventListener("input",render);
+document.querySelectorAll(".seg button").forEach(b=>{
+  if(b.dataset.m===modo){document.querySelectorAll(".seg button").forEach(x=>x.classList.remove("on"));b.classList.add("on");}
+  b.onclick=()=>{modo=b.dataset.m;store.set("modo",modo);document.querySelectorAll(".seg button").forEach(x=>x.classList.toggle("on",x===b));render();};
+});
+let pressT;
+$("list").addEventListener("click",e=>{const it=e.target.closest(".item");if(!it)return;fav=it.dataset.c;store.set("fav",fav);render();});
+$("list").addEventListener("contextmenu",e=>{
+  const it=e.target.closest(".item");if(!it)return;e.preventDefault();
+  const t=it.querySelector(".r").textContent;
+  navigator.clipboard?.writeText(t).then(()=>{$("st").firstChild&&( $("st").insertAdjacentHTML("afterbegin","✅ Copiado "+t+"<br>") );}).catch(()=>{});
+});
+$("ref").onclick=load;
+
+const c=store.get("cache"); if(c){rates=c.rates;updated=c.updated;render();}
+load();
+$("usd").focus();
+</script>
+</body>
+</html>
